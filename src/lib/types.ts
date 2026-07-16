@@ -1,4 +1,4 @@
-export type Role = 'student' | 'admin';
+export type Role = 'student' | 'faculty' | 'admin';
 
 export interface Profile {
   id: string;
@@ -15,6 +15,7 @@ export interface Student {
   age: number | null;
   gender: string;
   department: string;
+  semester: number;
   attendance: number;
   math: number;
   physics: number;
@@ -25,6 +26,7 @@ export interface Student {
   study_hours: number;
   assignments_completed: number;
   internal_marks: number;
+  quiz_marks: number;
   final_marks: number;
   user_id: string;
   created_at: string;
@@ -53,6 +55,7 @@ export const DEPARTMENTS = [
 ] as const;
 
 export type PerformanceCategory = 'Excellent' | 'Good' | 'Average' | 'Poor';
+export type RiskLevel = 'Low Risk' | 'Medium Risk' | 'High Risk';
 
 export interface ModelResult {
   name: string;
@@ -69,4 +72,36 @@ export interface TrainingResult {
   features: string[];
   yTest: number[];
   yActual: number[];
+}
+
+export interface WeeklyProgress {
+  id: string;
+  student_id: string;
+  week_number: number;
+  study_hours: number;
+  revision_hours: number;
+  sleep_hours: number;
+  mock_test_score: number | null;
+  learning_difficulty: string | null;
+  created_at: string;
+}
+
+export type WeeklyProgressInput = Omit<WeeklyProgress, 'id' | 'created_at'>;
+
+export interface ChatMessage {
+  id?: string;
+  user_id?: string;
+  role: 'user' | 'assistant';
+  message: string;
+  created_at?: string;
+}
+
+export interface StudentPrediction {
+  predictedMarks: number;
+  predictedGPA: number;
+  grade: string;
+  passProbability: number;
+  backlogRisk: boolean;
+  category: PerformanceCategory;
+  riskLevel: RiskLevel;
 }

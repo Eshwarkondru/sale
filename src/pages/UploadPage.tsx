@@ -44,16 +44,16 @@ export default function UploadPage() {
   const handleExport = () => {
     const csv = toCsv(students.map((s) => ({
       student_id: s.student_id, name: s.name, age: s.age ?? 0, gender: s.gender, department: s.department,
-      attendance: s.attendance, math: s.math, physics: s.physics, chemistry: s.chemistry, english: s.english,
+      semester: s.semester ?? 1, attendance: s.attendance, math: s.math, physics: s.physics, chemistry: s.chemistry, english: s.english,
       computer: s.computer, previous_gpa: s.previous_gpa, study_hours: s.study_hours,
-      assignments_completed: s.assignments_completed, internal_marks: s.internal_marks, final_marks: s.final_marks,
+      assignments_completed: s.assignments_completed, internal_marks: s.internal_marks, quiz_marks: s.quiz_marks ?? 0, final_marks: s.final_marks,
     })));
     downloadFile('students_export.csv', csv);
   };
 
   const handleDownloadTemplate = () => {
-    const template = 'student_id,name,age,gender,department,attendance,math,physics,chemistry,english,computer,previous_gpa,study_hours,assignments_completed,internal_marks,final_marks\nSTU0001,John Doe,19,Male,Computer Science,85,78,82,75,80,88,8.2,5,9,78,82';
-    downloadFile('eduinsight_template.csv', template);
+    const template = 'student_id,name,age,gender,department,semester,attendance,math,physics,chemistry,english,computer,previous_gpa,study_hours,assignments_completed,internal_marks,quiz_marks,final_marks\nSTU0001,John Doe,19,Male,Computer Science,3,85,78,82,75,80,88,8.2,5,9,78,75,82';
+    downloadFile('edupulse_template.csv', template);
   };
 
   return (

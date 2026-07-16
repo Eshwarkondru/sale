@@ -1,4 +1,4 @@
-import type { ModelResult, TrainingResult, Student, PerformanceCategory } from './types';
+import type { ModelResult, TrainingResult, Student, PerformanceCategory, RiskLevel, StudentPrediction } from './types';
 import { SUBJECTS } from './types';
 
 export const ML_FEATURES = [
@@ -12,6 +12,7 @@ export const ML_FEATURES = [
   'study_hours',
   'assignments_completed',
   'internal_marks',
+  'quiz_marks',
 ] as const;
 
 export type FeatureName = (typeof ML_FEATURES)[number];
@@ -20,7 +21,6 @@ function featureVector(s: Pick<Student, FeatureName>): number[] {
   return ML_FEATURES.map((f) => Number(s[f] ?? 0));
 }
 
-// Standardize features (z-score) for linear regression stability.
 function standardize(X: number[][]): { mean: number[]; std: number[]; out: number[][] } {
   const n = X.length;
   const d = X[0]?.length ?? 0;
@@ -38,7 +38,7 @@ function standardize(X: number[][]): { mean: number[]; std: number[]; out: numbe
   return { mean, std, out };
 }
 
-// ---------- Linear Regression (closed-form via gradient descent) ----------
+// ---------- Linear Regression ----------
 export interface LinearModel {
   weights: number[];
   bias: number;
@@ -76,7 +76,7 @@ export function predictLinear(m: LinearModel, X: number[][]): number[] {
   });
 }
 
-// ---------- Decision Tree (regression, CART) ----------
+// ---------- Decision Tree ----------
 export interface TreeNode {
   feature?: number;
   threshold?: number;
@@ -110,10 +110,7 @@ function bestSplit(X: number[][], y: number[], features: number[]): { feature: n
         else rightY.push(y[i]);
       }
       if (leftY.length === 0 || rightY.length === 0) continue;
-      const gain =
-        parentVar -
-        (leftY.length / n) * variance(leftY) -
-        (rightY.length / n) * variance(rightY);
+      const gain = parentVar - (leftY.length / n) * variance(leftY) - (rightY.length / n) * variance(rightY);
       if (!best || gain > best.gain) best = { feature: f, threshold: t, gain };
     }
   }
@@ -167,7 +164,6 @@ export function trainForest(X: number[][], y: number[], nTrees = 25, maxDepth = 
     const ys = sample.map((i) => y[i]);
     trees.push(trainTree(Xs, ys, 0, maxDepth, minSamples, featureSubset));
   }
-  // Feature importance via Gini-style: count split usage weighted by gain proxy (depth).
   const importance = new Array(d).fill(0);
   for (const tree of trees) accumulateImportance(tree, importance);
   return { trees, featureImportance: importance };
@@ -185,6 +181,33 @@ export function predictForest(f: RandomForest, X: number[][]): number[] {
     let sum = 0;
     for (const t of f.trees) sum += predictTree(t, row);
     return sum / f.trees.length;
+  });
+}
+
+// ---------- XGBoost-style Gradient Boosting ----------
+export interface GradientBoostingModel {
+  trees: TreeNode[];
+  initPrediction: number;
+  learningRate: number;
+}
+
+export function trainGradientBoosting(X: number[][], y: number[], nTrees = 30, maxDepth = 4, learningRate = 0.1): GradientBoostingModel {
+  const initPrediction = meanArr(y);
+  let residuals = y.map((v) => v - initPrediction);
+  const trees: TreeNode[] = [];
+  for (let t = 0; t < nTrees; t++) {
+    const tree = trainTree(X, residuals, 0, maxDepth, 5);
+    trees.push(tree);
+    residuals = residuals.map((r, i) => r - learningRate * predictTree(tree, X[i]));
+  }
+  return { trees, initPrediction, learningRate };
+}
+
+export function predictGradientBoosting(m: GradientBoostingModel, X: number[][]): number[] {
+  return X.map((row) => {
+    let pred = m.initPrediction;
+    for (const tree of m.trees) pred += m.learningRate * predictTree(tree, row);
+    return pred;
   });
 }
 
@@ -223,7 +246,7 @@ export function trainTestSplit<T>(arr: T[], testRatio = 0.2): { train: T[]; test
   return { train: shuffled.slice(0, cut), test: shuffled.slice(cut) };
 }
 
-// ---------- Full training pipeline ----------
+// ---------- Full training pipeline (4 models) ----------
 export function trainModels(students: Student[]): TrainingResult {
   const { train, test } = trainTestSplit(students, 0.2);
   const Xtr = train.map(featureVector);
@@ -234,32 +257,18 @@ export function trainModels(students: Student[]): TrainingResult {
   const lin = trainLinear(Xtr, ytr);
   const tree = trainTree(Xtr, ytr);
   const forest = trainForest(Xtr, ytr);
+  const gbm = trainGradientBoosting(Xtr, ytr);
+
+  const linPred = predictLinear(lin, Xte);
+  const treePred = Xte.map((r) => predictTree(tree, r));
+  const forestPred = predictForest(forest, Xte);
+  const gbmPred = predictGradientBoosting(gbm, Xte);
 
   const results: ModelResult[] = [
-    {
-      name: 'Linear Regression',
-      r2: r2Score(yte, predictLinear(lin, Xte)),
-      rmse: rmse(yte, predictLinear(lin, Xte)),
-      mae: mae(yte, predictLinear(lin, Xte)),
-      predictions: predictLinear(lin, Xte),
-      featureImportance: featureImportanceFromLinear(lin),
-    },
-    {
-      name: 'Decision Tree',
-      r2: r2Score(yte, Xte.map((r) => predictTree(tree, r))),
-      rmse: rmse(yte, Xte.map((r) => predictTree(tree, r))),
-      mae: mae(yte, Xte.map((r) => predictTree(tree, r))),
-      predictions: Xte.map((r) => predictTree(tree, r)),
-      featureImportance: featureImportanceFromTree(tree, ML_FEATURES.length),
-    },
-    {
-      name: 'Random Forest',
-      r2: r2Score(yte, predictForest(forest, Xte)),
-      rmse: rmse(yte, predictForest(forest, Xte)),
-      mae: mae(yte, predictForest(forest, Xte)),
-      predictions: predictForest(forest, Xte),
-      featureImportance: featureImportanceFromForest(forest),
-    },
+    { name: 'Linear Regression', r2: r2Score(yte, linPred), rmse: rmse(yte, linPred), mae: mae(yte, linPred), predictions: linPred, featureImportance: featureImportanceFromLinear(lin) },
+    { name: 'Decision Tree', r2: r2Score(yte, treePred), rmse: rmse(yte, treePred), mae: mae(yte, treePred), predictions: treePred, featureImportance: featureImportanceFromTree(tree, ML_FEATURES.length) },
+    { name: 'Random Forest', r2: r2Score(yte, forestPred), rmse: rmse(yte, forestPred), mae: mae(yte, forestPred), predictions: forestPred, featureImportance: featureImportanceFromForest(forest) },
+    { name: 'XGBoost (Gradient Boosting)', r2: r2Score(yte, gbmPred), rmse: rmse(yte, gbmPred), mae: mae(yte, gbmPred), predictions: gbmPred, featureImportance: featureImportanceFromTrees(gbm.trees, ML_FEATURES.length) },
   ];
 
   const best = results.reduce((b, r) => (r.rmse < b.rmse ? r : b), results[0]);
@@ -269,9 +278,7 @@ export function trainModels(students: Student[]): TrainingResult {
 function featureImportanceFromLinear(m: LinearModel): Record<string, number> {
   const total = m.weights.reduce((a, w) => a + Math.abs(w), 0) || 1;
   const imp: Record<string, number> = {};
-  ML_FEATURES.forEach((f, i) => {
-    imp[f] = (Math.abs(m.weights[i]) / total) * 100;
-  });
+  ML_FEATURES.forEach((f, i) => { imp[f] = (Math.abs(m.weights[i]) / total) * 100; });
   return imp;
 }
 
@@ -280,31 +287,36 @@ function featureImportanceFromTree(node: TreeNode, d: number): Record<string, nu
   accumulateImportance(node, imp);
   const total = imp.reduce((a, b) => a + b, 0) || 1;
   const out: Record<string, number> = {};
-  ML_FEATURES.forEach((f, i) => {
-    out[f] = (imp[i] / total) * 100;
-  });
+  ML_FEATURES.forEach((f, i) => { out[f] = (imp[i] / total) * 100; });
   return out;
 }
 
 function featureImportanceFromForest(f: RandomForest): Record<string, number> {
   const total = f.featureImportance.reduce((a, b) => a + b, 0) || 1;
   const out: Record<string, number> = {};
-  ML_FEATURES.forEach((feat, i) => {
-    out[feat] = (f.featureImportance[i] / total) * 100;
-  });
+  ML_FEATURES.forEach((feat, i) => { out[feat] = (f.featureImportance[i] / total) * 100; });
   return out;
 }
 
-// ---------- Predictions for a single student ----------
-export function predictStudent(finalMarks: number): {
-  grade: string;
-  passFail: string;
-  category: PerformanceCategory;
-} {
-  const grade = gradeFromMarks(finalMarks);
-  const passFail = finalMarks >= 40 ? 'Pass' : 'Fail';
-  const category = categoryFromMarks(finalMarks);
-  return { grade, passFail, category };
+function featureImportanceFromTrees(trees: TreeNode[], d: number): Record<string, number> {
+  const imp = new Array(d).fill(0);
+  for (const tree of trees) accumulateImportance(tree, imp);
+  const total = imp.reduce((a, b) => a + b, 0) || 1;
+  const out: Record<string, number> = {};
+  ML_FEATURES.forEach((f, i) => { out[f] = (imp[i] / total) * 100; });
+  return out;
+}
+
+// ---------- Enhanced single-student predictions ----------
+export function predictStudent(s: Student): StudentPrediction {
+  const predictedMarks = Math.min(100, Math.max(0, Math.round(s.final_marks)));
+  const predictedGPA = Math.min(10, Math.max(0, Math.round((predictedMarks / 10) * 10) / 10));
+  const grade = gradeFromMarks(predictedMarks);
+  const passProbability = Math.min(1, Math.max(0, (predictedMarks - 30) / 30));
+  const backlogRisk = predictedMarks < 40;
+  const category = categoryFromMarks(predictedMarks);
+  const riskLevel = riskFromMarks(predictedMarks, s.attendance);
+  return { predictedMarks, predictedGPA, grade, passProbability, backlogRisk, category, riskLevel };
 }
 
 export function gradeFromMarks(m: number): string {
@@ -324,10 +336,14 @@ export function categoryFromMarks(m: number): PerformanceCategory {
   return 'Poor';
 }
 
+export function riskFromMarks(marks: number, attendance: number): RiskLevel {
+  if (marks < 50 || attendance < 65) return 'High Risk';
+  if (marks < 65 || attendance < 75) return 'Medium Risk';
+  return 'Low Risk';
+}
+
 export function subjectAverages(s: Pick<Student, typeof SUBJECTS[number]>): Record<string, number> {
   const out: Record<string, number> = {};
-  SUBJECTS.forEach((sub) => {
-    out[sub] = Number(s[sub] ?? 0);
-  });
+  SUBJECTS.forEach((sub) => { out[sub] = Number(s[sub] ?? 0); });
   return out;
 }

@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Mail, Lock, User, ShieldCheck, GraduationCap, UserPlus, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, User, ShieldCheck, GraduationCap, UserPlus, Eye, EyeOff, BookOpen } from 'lucide-react';
 import AuthLayout from '../components/AuthLayout';
 import { useAuth } from '../context/AuthContext';
 import Spinner from '../components/Spinner';
@@ -70,6 +70,7 @@ export default function RegisterPage() {
           <div className="grid grid-cols-2 gap-3">
             {[
               { v: 'student' as Role, icon: <GraduationCap size={18} />, label: 'Student' },
+              { v: 'faculty' as Role, icon: <BookOpen size={18} />, label: 'Faculty' },
               { v: 'admin' as Role, icon: <ShieldCheck size={18} />, label: 'Admin' },
             ].map((opt) => (
               <button

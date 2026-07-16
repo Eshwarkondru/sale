@@ -4,7 +4,8 @@ import Card from '../components/Card';
 import { SeriesChart, ScatterPlot } from '../components/Charts';
 import { useData } from '../context/DataContext';
 import { trainModels, predictStudent } from '../lib/ml';
-import { type TrainingResult, type Student, SUBJECT_LABELS } from '../lib/types';
+import { type TrainingResult, type Student, type StudentPrediction, SUBJECT_LABELS } from '../lib/types';
+import { motion } from 'framer-motion';
 import Spinner, { FullPageLoader } from '../components/Spinner';
 
 export default function MLPage() {
@@ -78,7 +79,7 @@ function Results({ result, students }: { result: TrainingResult; students: Stude
   }, [best, yActual]);
 
   const student = students.find((s) => s.id === selectedStudent);
-  const prediction = student ? predictStudent(student.final_marks) : null;
+  const prediction: StudentPrediction | null = student ? predictStudent(student) : null;
 
   const featureImp: Record<string, number> = best.featureImportance ?? {};
   const sortedFeatures = Object.entries(featureImp).sort((a, b) => b[1] - a[1]);
@@ -158,19 +159,22 @@ function Results({ result, students }: { result: TrainingResult; students: Stude
         </p>
       </Card>
 
-      <Card title="Predict a Student" subtitle="Select a student to see predicted grade, pass/fail, and performance category">
+      <Card title="Predict a Student" subtitle="Select a student to see predicted marks, GPA, grade, pass probability, backlog risk, and performance category">
         <div className="mb-4">
           <select className="input max-w-md" value={selectedStudent} onChange={(e) => setSelectedStudent(e.target.value)}>
             {students.slice(0, 200).map((s) => <option key={s.id} value={s.id}>{s.name} ({s.student_id})</option>)}
           </select>
         </div>
         {student && prediction && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <PredictionBox label="Predicted Marks" value={String(Math.round(student.final_marks))} />
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            <PredictionBox label="Predicted Marks" value={String(prediction.predictedMarks)} />
+            <PredictionBox label="Predicted GPA" value={String(prediction.predictedGPA)} />
             <PredictionBox label="Grade" value={prediction.grade} />
-            <PredictionBox label="Pass / Fail" value={prediction.passFail} good={prediction.passFail === 'Pass'} />
-            <PredictionBox label="Category" value={prediction.category} />
-          </div>
+            <PredictionBox label="Pass Probability" value={`${Math.round(prediction.passProbability * 100)}%`} good={prediction.passProbability > 0.6} />
+            <PredictionBox label="Backlog Risk" value={prediction.backlogRisk ? 'Yes' : 'No'} good={!prediction.backlogRisk} />
+            <PredictionBox label="Category" value={prediction.category} good={prediction.category === 'Excellent' || prediction.category === 'Good'} />
+            <PredictionBox label="Risk Level" value={prediction.riskLevel} good={prediction.riskLevel === 'Low Risk'} />
+          </motion.div>
         )}
       </Card>
 

@@ -1,10 +1,11 @@
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, FileBarChart, GraduationCap, Clock, BookOpen, CheckSquare } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { ArrowLeft, FileBarChart, GraduationCap, Clock, BookOpen, CheckSquare, AlertTriangle, Target, Percent } from 'lucide-react';
 import Card from '../components/Card';
 import { RadarChart, SeriesChart } from '../components/Charts';
 import { useData } from '../context/DataContext';
 import { SUBJECTS, SUBJECT_LABELS } from '../lib/types';
-import { gradeFromMarks } from '../lib/ml';
+import { predictStudent } from '../lib/ml';
 import { generateRecommendations } from '../lib/recommendations';
 import { FullPageLoader } from '../components/Spinner';
 
@@ -24,8 +25,7 @@ export default function StudentDetailPage() {
     );
   }
 
-  const grade = gradeFromMarks(s.final_marks);
-  const passFail = s.final_marks >= 40 ? 'Pass' : 'Fail';
+  const pred = predictStudent(s);
   const recs = generateRecommendations(s);
 
   const priorityColor: Record<string, string> = {
@@ -67,13 +67,24 @@ export default function StudentDetailPage() {
             </div>
             <div className="rounded-xl bg-slate-50 dark:bg-white/5 p-3">
               <p className="text-xs text-slate-500">Grade</p>
-              <p className="text-xl font-bold text-brand-600 dark:text-brand-400">{grade}</p>
+              <p className="text-xl font-bold text-brand-600 dark:text-brand-400">{pred.grade}</p>
             </div>
             <div className="rounded-xl bg-slate-50 dark:bg-white/5 p-3">
               <p className="text-xs text-slate-500">Status</p>
-              <p className={`text-xl font-bold ${passFail === 'Pass' ? 'text-emerald-600' : 'text-rose-600'}`}>{passFail}</p>
+              <p className={`text-xl font-bold ${pred.passProbability > 0.5 ? 'text-emerald-600' : 'text-rose-600'}`}>{pred.passProbability > 0.5 ? 'Pass' : 'Fail'}</p>
             </div>
           </div>
+        </Card>
+
+        <Card title="ML Predictions" subtitle="AI-powered academic forecast" className="lg:col-span-2">
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            <PredBox icon={<Target size={16} />} label="Predicted Marks" value={String(pred.predictedMarks)} />
+            <PredBox icon={<GraduationCap size={16} />} label="Predicted GPA" value={String(pred.predictedGPA)} />
+            <PredBox icon={<Percent size={16} />} label="Pass Probability" value={`${Math.round(pred.passProbability * 100)}%`} good={pred.passProbability > 0.6} />
+            <PredBox icon={<AlertTriangle size={16} />} label="Backlog Risk" value={pred.backlogRisk ? 'Yes' : 'No'} good={!pred.backlogRisk} />
+            <PredBox icon={<BookOpen size={16} />} label="Category" value={pred.category} good={pred.category === 'Excellent' || pred.category === 'Good'} />
+            <PredBox icon={<AlertTriangle size={16} />} label="Risk Level" value={pred.riskLevel} good={pred.riskLevel === 'Low Risk'} />
+          </motion.div>
         </Card>
 
         <Card title="Subject Performance" subtitle="Marks across all subjects" className="lg:col-span-2">
@@ -107,6 +118,15 @@ export default function StudentDetailPage() {
           ))}
         </div>
       </Card>
+    </div>
+  );
+}
+
+function PredBox({ icon, label, value, good }: { icon: React.ReactNode; label: string; value: string; good?: boolean }) {
+  return (
+    <div className="rounded-xl bg-slate-50 dark:bg-white/5 p-4">
+      <div className="flex items-center gap-2 text-slate-500 text-xs mb-1">{icon} {label}</div>
+      <p className={`text-lg font-bold ${good === undefined ? 'text-slate-800 dark:text-white' : good ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{value}</p>
     </div>
   );
 }

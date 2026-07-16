@@ -1,29 +1,34 @@
 import { type ReactNode, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Users, BarChart3, BrainCircuit, Trophy,
   Upload, Settings, User as UserIcon, LogOut, Moon, Sun, Menu, X, ShieldCheck,
-  GraduationCap, Bell,
+  GraduationCap, Bell, MessageSquare, TrendingUp, BookOpen,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useData } from '../context/DataContext';
+import type { Role } from '../lib/types';
 
 interface NavItem {
   to: string;
   label: string;
   icon: ReactNode;
-  adminOnly?: boolean;
+  roles?: Role[];
 }
 
 const NAV: NavItem[] = [
   { to: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={18} /> },
-  { to: '/students', label: 'Students', icon: <Users size={18} /> },
-  { to: '/eda', label: 'Data Analysis', icon: <BarChart3 size={18} /> },
-  { to: '/ml', label: 'Machine Learning', icon: <BrainCircuit size={18} /> },
+  { to: '/students', label: 'Students', icon: <Users size={18} />, roles: ['admin', 'faculty'] },
+  { to: '/eda', label: 'Data Analysis', icon: <BarChart3 size={18} />, roles: ['admin', 'faculty'] },
+  { to: '/ml', label: 'Machine Learning', icon: <BrainCircuit size={18} />, roles: ['admin', 'faculty'] },
+  { to: '/faculty', label: 'Faculty Dashboard', icon: <BookOpen size={18} />, roles: ['faculty', 'admin'] },
+  { to: '/progress', label: 'Weekly Tracker', icon: <TrendingUp size={18} />, roles: ['student'] },
+  { to: '/chatbot', label: 'AI Assistant', icon: <MessageSquare size={18} /> },
   { to: '/leaderboard', label: 'Leaderboard', icon: <Trophy size={18} /> },
-  { to: '/upload', label: 'Upload Dataset', icon: <Upload size={18} />, adminOnly: true },
-  { to: '/admin', label: 'Admin Panel', icon: <ShieldCheck size={18} />, adminOnly: true },
+  { to: '/upload', label: 'Upload Dataset', icon: <Upload size={18} />, roles: ['admin'] },
+  { to: '/admin', label: 'Admin Panel', icon: <ShieldCheck size={18} />, roles: ['admin'] },
   { to: '/profile', label: 'Profile', icon: <UserIcon size={18} /> },
   { to: '/settings', label: 'Settings', icon: <Settings size={18} /> },
 ];
@@ -37,7 +42,8 @@ export default function Layout({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
 
-  const items = NAV.filter((n) => !n.adminOnly || profile?.role === 'admin');
+  const role = profile?.role ?? 'student';
+  const items = NAV.filter((n) => !n.roles || n.roles.includes(role));
 
   const handleSignOut = async () => {
     await signOut();
@@ -48,7 +54,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   const notifications = [
     weakCount > 0 ? `${weakCount} student(s) need attention (final marks < 50).` : 'All students performing well.',
     `Dataset loaded with ${students.length} records.`,
-    'ML model ready to train on the ML page.',
+    'ML models ready to train on the ML page.',
   ];
 
   return (
@@ -64,8 +70,8 @@ export default function Layout({ children }: { children: ReactNode }) {
               <GraduationCap size={22} />
             </div>
             <div>
-              <h1 className="font-display font-bold text-lg leading-tight text-slate-800 dark:text-white">EduInsight AI</h1>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400">Student Performance Analysis</p>
+              <h1 className="font-display font-bold text-lg leading-tight text-slate-800 dark:text-white">EduPulse AI</h1>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">Student Success Intelligence</p>
             </div>
             <button className="ml-auto lg:hidden text-slate-500" onClick={() => setOpen(false)}>
               <X size={20} />
@@ -73,22 +79,28 @@ export default function Layout({ children }: { children: ReactNode }) {
           </div>
 
           <nav className="mt-4 flex-1 space-y-1 overflow-y-auto">
-            {items.map((item) => {
+            {items.map((item, idx) => {
               const active = location.pathname.startsWith(item.to);
               return (
-                <Link
+                <motion.div
                   key={item.to}
-                  to={item.to}
-                  onClick={() => setOpen(false)}
-                  className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
-                    active
-                      ? 'bg-gradient-to-r from-brand-600 to-brand-500 text-white shadow-glow'
-                      : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5'
-                  }`}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: idx * 0.04 }}
                 >
-                  {item.icon}
-                  {item.label}
-                </Link>
+                  <Link
+                    to={item.to}
+                    onClick={() => setOpen(false)}
+                    className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
+                      active
+                        ? 'bg-gradient-to-r from-brand-600 to-brand-500 text-white shadow-glow'
+                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5'
+                    }`}
+                  >
+                    {item.icon}
+                    {item.label}
+                  </Link>
+                </motion.div>
               );
             })}
           </nav>
@@ -100,7 +112,7 @@ export default function Layout({ children }: { children: ReactNode }) {
               </div>
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 truncate">{profile?.full_name ?? 'User'}</p>
-                <p className="text-[11px] text-slate-500 capitalize">{profile?.role ?? 'student'}</p>
+                <p className="text-[11px] text-slate-500 capitalize">{role}</p>
               </div>
               <button onClick={handleSignOut} className="ml-auto text-slate-400 hover:text-rose-500 transition-colors" title="Sign out">
                 <LogOut size={18} />
@@ -132,19 +144,26 @@ export default function Layout({ children }: { children: ReactNode }) {
                   <Bell size={18} />
                   <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-rose-500" />
                 </button>
-                {notifOpen && (
-                  <div className="absolute right-0 mt-2 w-72 glass-card p-3 z-50 animate-fade-in">
-                    <p className="font-semibold text-sm mb-2 text-slate-700 dark:text-slate-200">Notifications</p>
-                    <ul className="space-y-2">
-                      {notifications.map((n, i) => (
-                        <li key={i} className="text-xs text-slate-600 dark:text-slate-300 flex gap-2">
-                          <span className="h-1.5 w-1.5 rounded-full bg-brand-500 mt-1.5 shrink-0" />
-                          {n}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+                <AnimatePresence>
+                  {notifOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className="absolute right-0 mt-2 w-72 glass-card p-3 z-50"
+                    >
+                      <p className="font-semibold text-sm mb-2 text-slate-700 dark:text-slate-200">Notifications</p>
+                      <ul className="space-y-2">
+                        {notifications.map((n, i) => (
+                          <li key={i} className="text-xs text-slate-600 dark:text-slate-300 flex gap-2">
+                            <span className="h-1.5 w-1.5 rounded-full bg-brand-500 mt-1.5 shrink-0" />
+                            {n}
+                          </li>
+                        ))}
+                      </ul>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
               <button onClick={toggle} className="btn-ghost !px-2.5" aria-label="Toggle theme">
                 {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}

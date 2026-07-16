@@ -1,5 +1,6 @@
 import type { Student } from './types';
-import { SUBJECTS } from './types';
+import { SUBJECTS, SUBJECT_LABELS } from './types';
+import { predictStudent } from './ml';
 
 export interface Recommendation {
   title: string;
@@ -9,6 +10,7 @@ export interface Recommendation {
 
 export function generateRecommendations(s: Student): Recommendation[] {
   const recs: Recommendation[] = [];
+  const pred = predictStudent(s);
 
   if (s.attendance < 85) {
     recs.push({
@@ -19,28 +21,28 @@ export function generateRecommendations(s: Student): Recommendation[] {
   }
 
   if (s.study_hours < 4) {
+    const target = Math.ceil((s.study_hours + 1.5) * 10) / 10;
     recs.push({
       title: 'Increase Study Hours',
-      detail: `You currently study ${s.study_hours} hrs/day. Increase study hours by at least 1 hour/day for better retention.`,
+      detail: `You currently study ${s.study_hours} hrs/day. Increase study hours from ${s.study_hours} to ${target} hours/day for better retention.`,
       priority: 'high',
     });
   }
 
-  // Weakest subject
   const subjectMarks = SUBJECTS.map((sub) => ({ sub, mark: Number(s[sub] ?? 0) }));
   const weakest = [...subjectMarks].sort((a, b) => a.mark - b.mark)[0];
   if (weakest && weakest.mark < 60) {
     recs.push({
-      title: `Focus on ${weakest.sub.charAt(0).toUpperCase() + weakest.sub.slice(1)}`,
-      detail: `Your ${weakest.sub} score is ${weakest.mark}. Dedicate extra practice time and solve previous papers in this subject.`,
+      title: `Focus on ${SUBJECT_LABELS[weakest.sub as typeof SUBJECTS[number]]}`,
+      detail: `Your ${SUBJECT_LABELS[weakest.sub as typeof SUBJECTS[number]]} score is ${weakest.mark}. Practice ${SUBJECT_LABELS[weakest.sub as typeof SUBJECTS[number]]} for at least 45 minutes daily and solve previous papers.`,
       priority: 'high',
     });
   }
 
   if (s.assignments_completed < 8) {
     recs.push({
-      title: 'Complete Assignments Regularly',
-      detail: `You completed ${s.assignments_completed}/10 assignments. Timely submissions boost internal marks and understanding.`,
+      title: 'Complete Pending Assignments',
+      detail: `You completed ${s.assignments_completed}/10 assignments. Complete pending assignments before Friday to boost internal marks.`,
       priority: 'medium',
     });
   }
@@ -50,6 +52,22 @@ export function generateRecommendations(s: Student): Recommendation[] {
       title: 'Strengthen Internal Assessment',
       detail: `Internal marks are ${s.internal_marks}. Participate in class tests and quizzes to improve this score.`,
       priority: 'medium',
+    });
+  }
+
+  if (pred.riskLevel === 'Medium Risk') {
+    recs.push({
+      title: 'Medium Risk Alert',
+      detail: `Based on your recent performance, you have a medium risk of scoring below 70%. Increase study consistency and attend all upcoming lectures.`,
+      priority: 'medium',
+    });
+  }
+
+  if (pred.riskLevel === 'High Risk') {
+    recs.push({
+      title: 'High Risk Warning',
+      detail: `You are at high risk of poor academic performance. Please consult your faculty advisor immediately and create a remediation plan.`,
+      priority: 'high',
     });
   }
 

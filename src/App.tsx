@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { DataProvider } from './context/DataContext';
 import { ThemeProvider } from './context/ThemeContext';
-import ProtectedRoute, { AdminRoute } from './components/ProtectedRoute';
+import ProtectedRoute, { AdminRoute, FacultyRoute } from './components/ProtectedRoute';
 import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
@@ -18,6 +18,9 @@ import AdminPage from './pages/AdminPage';
 import ReportPage from './pages/ReportPage';
 import ProfilePage from './pages/ProfilePage';
 import SettingsPage from './pages/SettingsPage';
+import FacultyPage from './pages/FacultyPage';
+import ProgressPage from './pages/ProgressPage';
+import ChatbotPage from './pages/ChatbotPage';
 
 export default function App() {
   return (
@@ -42,6 +45,9 @@ export default function App() {
                         <Route path="/report/:id" element={<ReportPage />} />
                         <Route path="/eda" element={<EDAPage />} />
                         <Route path="/ml" element={<MLPage />} />
+                        <Route path="/faculty" element={<FacultyRoute><FacultyPage /></FacultyRoute>} />
+                        <Route path="/progress" element={<ProgressPage />} />
+                        <Route path="/chatbot" element={<ChatbotPage />} />
                         <Route path="/leaderboard" element={<LeaderboardPage />} />
                         <Route path="/profile" element={<ProfilePage />} />
                         <Route path="/settings" element={<SettingsPage />} />

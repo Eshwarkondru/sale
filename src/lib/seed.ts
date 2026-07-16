@@ -23,17 +23,16 @@ function pick<T>(arr: readonly T[]): T {
   return arr[randInt(0, arr.length - 1)];
 }
 
-// Deterministic-ish PRNG so re-seeding gives stable-ish data; here we just use Math.random.
 export function generateSampleStudents(count = 1000): StudentInput[] {
   const students: StudentInput[] = [];
   for (let i = 0; i < count; i++) {
     const gender = Math.random() > 0.45 ? 'Male' : 'Female';
     const name = `${pick(FIRST_NAMES)} ${pick(LAST_NAMES)}`;
     const department = pick(DEPARTMENTS);
+    const semester = randInt(1, 8);
     const attendance = Math.round(rand(55, 99));
     const studyHours = Math.round(rand(1, 10) * 10) / 10;
 
-    // Correlate marks with attendance + study hours so ML finds signal.
     const base = (attendance * 0.4 + studyHours * 4) / 2;
     const math = Math.min(100, Math.max(20, Math.round(base + rand(-15, 15))));
     const physics = Math.min(100, Math.max(20, Math.round(base + rand(-18, 12))));
@@ -44,6 +43,7 @@ export function generateSampleStudents(count = 1000): StudentInput[] {
     const assignmentsCompleted = randInt(4, 10);
     const internalMarks = Math.min(100, Math.max(30, Math.round(base + rand(-10, 15))));
     const previousGpa = Math.min(10, Math.max(3, Math.round((base / 10) * 10) / 10));
+    const quizMarks = Math.min(100, Math.max(20, Math.round(base + rand(-12, 10))));
 
     const subjectAvg = (math + physics + chemistry + english + computer) / 5;
     const finalMarks = Math.min(
@@ -67,6 +67,7 @@ export function generateSampleStudents(count = 1000): StudentInput[] {
       age: randInt(17, 22),
       gender,
       department,
+      semester,
       attendance,
       math,
       physics,
@@ -77,6 +78,7 @@ export function generateSampleStudents(count = 1000): StudentInput[] {
       study_hours: studyHours,
       assignments_completed: assignmentsCompleted,
       internal_marks: internalMarks,
+      quiz_marks: quizMarks,
       final_marks: finalMarks,
     });
   }

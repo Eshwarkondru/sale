@@ -9,8 +9,8 @@ import { supabase } from '../lib/supabase';
 
 const EMPTY: StudentInput = {
   student_id: '', name: '', age: 18, gender: 'Male', department: DEPARTMENTS[0],
-  attendance: 75, math: 60, physics: 60, chemistry: 60, english: 60, computer: 60,
-  previous_gpa: 7, study_hours: 4, assignments_completed: 5, internal_marks: 60, final_marks: 60,
+  semester: 1, attendance: 75, math: 60, physics: 60, chemistry: 60, english: 60, computer: 60,
+  previous_gpa: 7, study_hours: 4, assignments_completed: 5, internal_marks: 60, quiz_marks: 60, final_marks: 60,
 };
 
 export default function AdminPage() {
@@ -27,9 +27,9 @@ export default function AdminPage() {
     setEditing(s);
     setForm({
       student_id: s.student_id, name: s.name, age: s.age ?? 18, gender: s.gender, department: s.department,
-      attendance: s.attendance, math: s.math, physics: s.physics, chemistry: s.chemistry, english: s.english,
+      semester: s.semester ?? 1, attendance: s.attendance, math: s.math, physics: s.physics, chemistry: s.chemistry, english: s.english,
       computer: s.computer, previous_gpa: s.previous_gpa, study_hours: s.study_hours,
-      assignments_completed: s.assignments_completed, internal_marks: s.internal_marks, final_marks: s.final_marks,
+      assignments_completed: s.assignments_completed, internal_marks: s.internal_marks, quiz_marks: s.quiz_marks ?? 0, final_marks: s.final_marks,
     });
     setShowForm(true);
   };
@@ -53,9 +53,9 @@ export default function AdminPage() {
   const handleExport = () => {
     const csv = toCsv(students.map((s) => ({
       student_id: s.student_id, name: s.name, age: s.age ?? 0, gender: s.gender, department: s.department,
-      attendance: s.attendance, math: s.math, physics: s.physics, chemistry: s.chemistry, english: s.english,
+      semester: s.semester ?? 1, attendance: s.attendance, math: s.math, physics: s.physics, chemistry: s.chemistry, english: s.english,
       computer: s.computer, previous_gpa: s.previous_gpa, study_hours: s.study_hours,
-      assignments_completed: s.assignments_completed, internal_marks: s.internal_marks, final_marks: s.final_marks,
+      assignments_completed: s.assignments_completed, internal_marks: s.internal_marks, quiz_marks: s.quiz_marks ?? 0, final_marks: s.final_marks,
     })));
     downloadFile('students_export.csv', csv);
   };
@@ -106,6 +106,7 @@ export default function AdminPage() {
             <Field label="Age"><input type="number" className="input" value={form.age ?? 0} onChange={(e) => setForm({ ...form, age: Number(e.target.value) })} /></Field>
             <Field label="Gender"><select className="input" value={form.gender} onChange={(e) => setForm({ ...form, gender: e.target.value })}><option>Male</option><option>Female</option><option>Other</option></select></Field>
             <Field label="Department"><select className="input" value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })}>{DEPARTMENTS.map((d) => <option key={d}>{d}</option>)}</select></Field>
+            <Field label="Semester"><input type="number" className="input" min={1} max={8} value={form.semester} onChange={(e) => setForm({ ...form, semester: Number(e.target.value) })} /></Field>
             <Field label="Attendance (%)"><input type="number" className="input" value={form.attendance} onChange={(e) => setForm({ ...form, attendance: Number(e.target.value) })} /></Field>
             <Field label="Math"><input type="number" className="input" value={form.math} onChange={(e) => setForm({ ...form, math: Number(e.target.value) })} /></Field>
             <Field label="Physics"><input type="number" className="input" value={form.physics} onChange={(e) => setForm({ ...form, physics: Number(e.target.value) })} /></Field>
@@ -116,6 +117,7 @@ export default function AdminPage() {
             <Field label="Study Hours"><input type="number" step="0.1" className="input" value={form.study_hours} onChange={(e) => setForm({ ...form, study_hours: Number(e.target.value) })} /></Field>
             <Field label="Assignments"><input type="number" className="input" value={form.assignments_completed} onChange={(e) => setForm({ ...form, assignments_completed: Number(e.target.value) })} /></Field>
             <Field label="Internal Marks"><input type="number" className="input" value={form.internal_marks} onChange={(e) => setForm({ ...form, internal_marks: Number(e.target.value) })} /></Field>
+            <Field label="Quiz Marks"><input type="number" className="input" value={form.quiz_marks} onChange={(e) => setForm({ ...form, quiz_marks: Number(e.target.value) })} /></Field>
             <Field label="Final Marks"><input type="number" className="input" value={form.final_marks} onChange={(e) => setForm({ ...form, final_marks: Number(e.target.value) })} /></Field>
             <div className="sm:col-span-2 lg:col-span-3">
               <button className="btn-primary" disabled={busy}>{busy ? <Spinner size={16} /> : <Plus size={16} />} {editing ? 'Save Changes' : 'Add Student'}</button>

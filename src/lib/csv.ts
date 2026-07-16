@@ -112,6 +112,7 @@ export function parseCsv(text: string): ParseResult {
       age: num(mapped.age) || 18,
       gender: gender.charAt(0).toUpperCase() + gender.slice(1),
       department,
+      semester: Math.round(num(mapped.semester)) || 1,
       attendance: num(mapped.attendance) || 75,
       math: num(mapped.math) || 60,
       physics: num(mapped.physics) || 60,
@@ -122,6 +123,7 @@ export function parseCsv(text: string): ParseResult {
       study_hours: num(mapped.study_hours) || 4,
       assignments_completed: Math.round(num(mapped.assignments_completed)) || 5,
       internal_marks: num(mapped.internal_marks) || 60,
+      quiz_marks: num(mapped.quiz_marks) || 0,
       final_marks: num(mapped.final_marks) || 60,
     };
     result.students.push(student);

@@ -2,14 +2,13 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { Student } from './types';
 import { SUBJECTS, SUBJECT_LABELS } from './types';
-import { gradeFromMarks, categoryFromMarks } from './ml';
+import { predictStudent, gradeFromMarks } from './ml';
 import { generateRecommendations } from './recommendations';
 
 export function generateStudentReport(s: Student): void {
   const doc = new jsPDF();
-  const grade = gradeFromMarks(s.final_marks);
-  const category = categoryFromMarks(s.final_marks);
-  const passFail = s.final_marks >= 40 ? 'Pass' : 'Fail';
+  const pred = predictStudent(s);
+  const passFail = pred.passProbability > 0.5 ? 'Pass' : 'Fail';
 
   // Header band
   doc.setFillColor(79, 70, 229);
@@ -17,7 +16,7 @@ export function generateStudentReport(s: Student): void {
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(18);
   doc.setFont('helvetica', 'bold');
-  doc.text('EduInsight AI - Student Performance Report', 14, 14);
+  doc.text('EduPulse AI - Student Performance Report', 14, 14);
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
   doc.text(`Generated ${new Date().toLocaleString()}`, 14, 22);
@@ -36,11 +35,13 @@ export function generateStudentReport(s: Student): void {
       ['Age', String(s.age ?? '-')],
       ['Gender', s.gender],
       ['Department', s.department],
+      ['Semester', String(s.semester ?? 1)],
       ['Attendance', `${s.attendance}%`],
       ['Previous GPA', String(s.previous_gpa)],
       ['Study Hours/day', String(s.study_hours)],
       ['Assignments Completed', `${s.assignments_completed}/10`],
       ['Internal Marks', String(s.internal_marks)],
+      ['Quiz Marks', String(s.quiz_marks ?? 0)],
     ],
     theme: 'grid',
     headStyles: { fillColor: [79, 70, 229] },
@@ -68,10 +69,14 @@ export function generateStudentReport(s: Student): void {
     startY: y + 4,
     head: [['Metric', 'Result']],
     body: [
-      ['Predicted Final Marks', String(Math.round(s.final_marks))],
-      ['Grade', grade],
+      ['Predicted Final Marks', String(pred.predictedMarks)],
+      ['Predicted GPA', String(pred.predictedGPA)],
+      ['Grade', pred.grade],
+      ['Pass Probability', `${Math.round(pred.passProbability * 100)}%`],
       ['Pass / Fail', passFail],
-      ['Performance Category', category],
+      ['Backlog Risk', pred.backlogRisk ? 'Yes' : 'No'],
+      ['Performance Category', pred.category],
+      ['Risk Level', pred.riskLevel],
     ],
     theme: 'grid',
     headStyles: { fillColor: [79, 70, 229] },
@@ -98,7 +103,7 @@ export function generateStudentReport(s: Student): void {
     doc.setPage(i);
     doc.setFontSize(8);
     doc.setTextColor(120, 120, 120);
-    doc.text('EduInsight AI - Confidential Student Report', 14, 290);
+    doc.text('EduPulse AI - Confidential Student Report', 14, 290);
     doc.text(`Page ${i} of ${pageCount}`, 180, 290);
   }
 

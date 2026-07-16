@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { Profile, Role } from '../lib/types';
+export type { Role };
 
 interface AuthContextValue {
   session: Session | null;

@@ -5,7 +5,7 @@ import Card from '../components/Card';
 import { RadarChart, SeriesChart } from '../components/Charts';
 import { useData } from '../context/DataContext';
 import { SUBJECTS, SUBJECT_LABELS } from '../lib/types';
-import { gradeFromMarks, categoryFromMarks } from '../lib/ml';
+import { predictStudent } from '../lib/ml';
 import { generateRecommendations } from '../lib/recommendations';
 import { generateStudentReport } from '../lib/pdf';
 import { FullPageLoader } from '../components/Spinner';
@@ -35,8 +35,7 @@ export default function ReportPage() {
     );
   }
 
-  const grade = gradeFromMarks(s.final_marks);
-  const category = categoryFromMarks(s.final_marks);
+  const pred = predictStudent(s);
   const recs = generateRecommendations(s);
 
   return (
@@ -50,9 +49,16 @@ export default function ReportPage() {
         <div className="space-y-6">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
             <Stat label="Final Marks" value={String(s.final_marks)} />
-            <Stat label="Grade" value={grade} />
-            <Stat label="Category" value={category} />
-            <Stat label="Pass/Fail" value={s.final_marks >= 40 ? 'Pass' : 'Fail'} />
+            <Stat label="Grade" value={pred.grade} />
+            <Stat label="Pass Prob." value={`${Math.round(pred.passProbability * 100)}%`} />
+            <Stat label="Risk Level" value={pred.riskLevel} />
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+            <Stat label="Pred. Marks" value={String(pred.predictedMarks)} />
+            <Stat label="Pred. GPA" value={String(pred.predictedGPA)} />
+            <Stat label="Backlog Risk" value={pred.backlogRisk ? 'Yes' : 'No'} />
+            <Stat label="Category" value={pred.category} />
           </div>
 
           <div>
