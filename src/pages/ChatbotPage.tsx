@@ -1,14 +1,19 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Bot, User, Sparkles } from 'lucide-react';
-
+import { Send, Bot, User, Sparkles, KeyRound, ExternalLink, AlertCircle } from 'lucide-react';
 import Card from '../components/Card';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
-import { predictStudent, gradeFromMarks } from '../lib/ml';
-import { generateRecommendations } from '../lib/recommendations';
-import { SUBJECTS, SUBJECT_LABELS, type ChatMessage } from '../lib/types';
+import { type ChatMessage } from '../lib/types';
+import {
+  getGeminiApiKey,
+  setGeminiApiKey,
+  hasGeminiApiKey,
+  buildStudentContext,
+  callGemini,
+  type GeminiMessage,
+} from '../lib/gemini';
 
 export default function ChatbotPage() {
   const { user } = useAuth();
@@ -17,10 +22,12 @@ export default function ChatbotPage() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(true);
   const [thinking, setThinking] = useState(false);
+  const [hasKey, setHasKey] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const loadHistory = useCallback(async () => {
-    if (!user) return;
+    if (!user) { setLoading(false); return; }
     const { data } = await supabase
       .from('chatbot_logs')
       .select('*')
@@ -31,71 +38,26 @@ export default function ChatbotPage() {
     } else {
       setMessages([{
         role: 'assistant',
-        message: "Hi! I'm your AI academic assistant. Ask me about your performance, predictions, study tips, or at-risk analysis.",
+        message: "Hi! I'm your Gemini-powered AI academic assistant. Ask me about your performance, predictions, study tips, or anything academic!",
       }]);
     }
     setLoading(false);
   }, [user]);
 
-  useEffect(() => { loadHistory(); }, [loadHistory]);
+  useEffect(() => {
+    setHasKey(hasGeminiApiKey());
+    loadHistory();
+  }, [loadHistory]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, thinking]);
 
   const student = students[0];
 
-  const generateResponse = (query: string): string => {
-    const q = query.toLowerCase();
-    if (!student) return 'No student data available. Please upload a dataset first.';
-
-    const pred = predictStudent(student);
-    const recs = generateRecommendations(student);
-
-    if (q.includes('predict') || q.includes('forecast') || q.includes('will i')) {
-      return `Based on your current data, here are your predictions:\n• Predicted Final Marks: ${pred.predictedMarks}\n• Predicted GPA: ${pred.predictedGPA}\n• Grade: ${pred.grade}\n• Pass Probability: ${Math.round(pred.passProbability * 100)}%\n• Backlog Risk: ${pred.backlogRisk ? 'Yes' : 'No'}\n• Performance Category: ${pred.category}\n• Risk Level: ${pred.riskLevel}`;
-    }
-
-    if (q.includes('risk') || q.includes('at-risk') || q.includes('backlog')) {
-      return `Your current risk level is "${pred.riskLevel}". ${pred.backlogRisk ? 'You are at risk of a backlog. ' : ''}${pred.riskLevel === 'High Risk' ? 'Immediate action needed: focus on increasing study hours and attendance.' : pred.riskLevel === 'Medium Risk' ? 'Stay consistent and improve weak subjects.' : 'You are on track. Keep maintaining your study routine.'}`;
-    }
-
-    if (q.includes('attendance')) {
-      return `Your attendance is ${student.attendance}%. ${student.attendance < 85 ? 'This is below the recommended 85%. Try to attend more classes to stay on track.' : 'Great attendance! Keep it up.'}`;
-    }
-
-    if (q.includes('study') || q.includes('study hour')) {
-      return `You currently study ${student.study_hours} hours/day. ${student.study_hours < 4 ? 'Consider increasing to at least 4-5 hours/day for better academic performance.' : 'Good study hours. Maintain this consistency.'}`;
-    }
-
-    if (q.includes('subject') || q.includes('weak') || q.includes('strong')) {
-      const marks = SUBJECTS.map((s) => ({ sub: SUBJECT_LABELS[s], mark: Number(student[s] ?? 0) }));
-      const weakest = [...marks].sort((a, b) => a.mark - b.mark)[0];
-      const strongest = [...marks].sort((a, b) => b.mark - a.mark)[0];
-      return `Subject Analysis:\n• Weakest: ${weakest.sub} (${weakest.mark})\n• Strongest: ${strongest.sub} (${strongest.mark})\n\nFocus more on ${weakest.sub} — practice daily and solve previous papers.`;
-    }
-
-    if (q.includes('recommend') || q.includes('advice') || q.includes('tip') || q.includes('improve')) {
-      return recs.map((r, i) => `${i + 1}. ${r.title}: ${r.detail}`).join('\n\n');
-    }
-
-    if (q.includes('grade') || q.includes('gpa')) {
-      return `Your current grade is ${gradeFromMarks(student.final_marks)} with a GPA of ${student.previous_gpa}. Predicted final grade: ${pred.grade} (GPA: ${pred.predictedGPA}).`;
-    }
-
-    if (q.includes('assignment')) {
-      return `You completed ${student.assignments_completed}/10 assignments. ${student.assignments_completed < 8 ? 'Complete pending assignments before deadlines to improve internal marks.' : 'Great assignment completion rate!'}`;
-    }
-
-    if (q.includes('hello') || q.includes('hi') || q.includes('hey')) {
-      return `Hello! I'm your AI academic assistant. I can help with:\n• Performance predictions\n• Risk analysis\n• Subject-wise insights\n• Study recommendations\n• Attendance & assignment tracking\n\nWhat would you like to know?`;
-    }
-
-    return `I can help with predictions, risk analysis, subject performance, study recommendations, and more. Try asking:\n• "What are my predicted marks?"\n• "Am I at risk?"\n• "Which subject should I focus on?"\n• "Give me study recommendations"`;
-  };
-
   const handleSend = async () => {
-    if (!input.trim() || !user) return;
+    if (!input.trim() || !user || thinking) return;
+    setError(null);
     const userMsg: ChatMessage = { role: 'user', message: input.trim() };
     setMessages((m) => [...m, userMsg]);
     setInput('');
@@ -103,23 +65,69 @@ export default function ChatbotPage() {
 
     await supabase.from('chatbot_logs').insert({ user_id: user.id, role: 'user', message: userMsg.message });
 
-    await new Promise((r) => setTimeout(r, 600));
-    const response = generateResponse(userMsg.message);
-    const botMsg: ChatMessage = { role: 'assistant', message: response };
-    setMessages((m) => [...m, botMsg]);
-    setThinking(false);
+    try {
+      const apiKey = getGeminiApiKey();
+      if (!apiKey) {
+        setHasKey(false);
+        throw new Error('No Gemini API key configured. Please add your key in Settings.');
+      }
 
-    await supabase.from('chatbot_logs').insert({ user_id: user.id, role: 'assistant', message: response });
+      const conversation: GeminiMessage[] = [...messages, userMsg].map((m) => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: m.message,
+      }));
+
+      const systemContext = buildStudentContext(student);
+      const response = await callGemini(apiKey, conversation, systemContext);
+
+      const botMsg: ChatMessage = { role: 'assistant', message: response };
+      setMessages((m) => [...m, botMsg]);
+      await supabase.from('chatbot_logs').insert({ user_id: user.id, role: 'assistant', message: response });
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : 'Failed to get response from Gemini.';
+      setError(errMsg);
+      const botMsg: ChatMessage = {
+        role: 'assistant',
+        message: `Sorry, I encountered an error: ${errMsg}`,
+      };
+      setMessages((m) => [...m, botMsg]);
+    } finally {
+      setThinking(false);
+    }
+  };
+
+  const handleKeySaved = () => {
+    setHasKey(true);
+    setError(null);
   };
 
   if (loading) return <div className="text-center py-20 text-slate-500">Loading chat...</div>;
 
+  if (!hasKey) {
+    return <GeminiSetupScreen onSaved={handleKeySaved} />;
+  }
+
   return (
     <div className="space-y-4">
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="font-display font-bold text-2xl text-slate-800 dark:text-white">AI Academic Assistant</h1>
-        <p className="text-slate-500 dark:text-slate-400">Ask about your performance, predictions, risk levels, and personalized recommendations.</p>
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div>
+            <h1 className="font-display font-bold text-2xl text-slate-800 dark:text-white">AI Academic Assistant</h1>
+            <p className="text-slate-500 dark:text-slate-400">Powered by Google Gemini. Ask about your performance, predictions, and study tips.</p>
+          </div>
+          <span className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400">
+            <Sparkles size={14} /> Gemini 1.5 Flash
+          </span>
+        </div>
       </motion.div>
+
+      {error && (
+        <div className="flex items-center gap-2 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/30 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">
+          <AlertCircle size={16} className="shrink-0" />
+          <span className="flex-1">{error}</span>
+          <a href="/settings" className="text-rose-600 dark:text-rose-400 font-medium hover:underline">Fix in Settings</a>
+        </div>
+      )}
 
       <Card className="!p-0 overflow-hidden">
         <div className="flex items-center gap-2 px-5 py-3 border-b border-slate-200/60 dark:border-white/10 bg-gradient-to-r from-brand-500/10 to-accent-500/10">
@@ -128,7 +136,7 @@ export default function ChatbotPage() {
           </div>
           <div>
             <p className="font-semibold text-sm text-slate-800 dark:text-white">EduPulse AI Assistant</p>
-            <p className="text-xs text-emerald-500 flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Online</p>
+            <p className="text-xs text-emerald-500 flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Online · Gemini</p>
           </div>
           <Sparkles size={16} className="ml-auto text-brand-500" />
         </div>
@@ -175,18 +183,95 @@ export default function ChatbotPage() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+              disabled={thinking}
             />
-            <button onClick={handleSend} disabled={!input.trim()} className="btn-primary !px-4">
+            <button onClick={handleSend} disabled={!input.trim() || thinking} className="btn-primary !px-4">
               <Send size={18} />
             </button>
           </div>
           <div className="flex flex-wrap gap-2 mt-3">
             {['What are my predicted marks?', 'Am I at risk?', 'Which subject should I focus on?', 'Give me study recommendations'].map((sug) => (
-              <button key={sug} onClick={() => setInput(sug)} className="text-xs px-3 py-1.5 rounded-full bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-300 hover:bg-brand-100 dark:hover:bg-brand-500/15 hover:text-brand-700 dark:hover:text-brand-300 transition-colors">
+              <button key={sug} onClick={() => setInput(sug)} disabled={thinking} className="text-xs px-3 py-1.5 rounded-full bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-300 hover:bg-brand-100 dark:hover:bg-brand-500/15 hover:text-brand-700 dark:hover:text-brand-300 transition-colors disabled:opacity-50">
                 {sug}
               </button>
             ))}
           </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function GeminiSetupScreen({ onSaved }: { onSaved: () => void }) {
+  const [key, setKey] = useState('');
+  const [showKey, setShowKey] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = () => {
+    if (!key.trim()) return;
+    setSaving(true);
+    setGeminiApiKey(key);
+    setSaving(false);
+    onSaved();
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto">
+      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-8">
+        <div className="inline-grid place-items-center h-16 w-16 rounded-2xl bg-gradient-to-br from-brand-600 to-accent-500 text-white shadow-glow mb-4">
+          <Sparkles size={32} />
+        </div>
+        <h1 className="font-display font-bold text-2xl text-slate-800 dark:text-white">Connect Gemini AI</h1>
+        <p className="text-slate-500 dark:text-slate-400 mt-2">
+          The AI Assistant uses Google's Gemini API. Paste your API key to enable real AI-powered responses.
+        </p>
+      </motion.div>
+
+      <Card title="Gemini API Key Setup" subtitle="Your key is stored locally in your browser only">
+        <div className="space-y-5">
+          <div className="rounded-xl bg-brand-50 dark:bg-brand-500/10 border border-brand-200 dark:border-brand-500/30 p-4">
+            <p className="text-sm text-brand-700 dark:text-brand-300 font-medium mb-2">How to get your free API key:</p>
+            <ol className="text-sm text-brand-600 dark:text-brand-400 space-y-1 list-decimal list-inside">
+              <li>Visit Google AI Studio (aistudio.google.com)</li>
+              <li>Sign in with your Google account</li>
+              <li>Click "Get API Key" and create a new key</li>
+              <li>Copy the key and paste it below</li>
+            </ol>
+            <a
+              href="https://aistudio.google.com/app/apikey"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 dark:text-brand-400 hover:underline mt-3"
+            >
+              <ExternalLink size={14} /> Open Google AI Studio
+            </a>
+          </div>
+
+          <div>
+            <label className="label">Gemini API Key</label>
+            <div className="relative">
+              <KeyRound size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type={showKey ? 'text' : 'password'}
+                className="input pl-10 pr-20"
+                placeholder="AIza..."
+                value={key}
+                onChange={(e) => setKey(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSave()}
+              />
+              <button
+                onClick={() => setShowKey((v) => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+              >
+                {showKey ? 'Hide' : 'Show'}
+              </button>
+            </div>
+            <p className="text-xs text-slate-400 mt-1.5">Your key never leaves your browser. It's stored in localStorage for development.</p>
+          </div>
+
+          <button onClick={handleSave} disabled={!key.trim() || saving} className="btn-primary w-full">
+            <KeyRound size={18} /> {saving ? 'Saving...' : 'Save & Connect'}
+          </button>
         </div>
       </Card>
     </div>
